@@ -13,11 +13,69 @@ import {
 import { logger as rootLogger } from "matrix-js-sdk/lib/logger";
 import { type CallMembershipIdentityParts } from "matrix-js-sdk/lib/matrixrtc/EncryptionManager";
 const logger = rootLogger.getChild("[MatrixKeyProvider]");
+const ZMATH_MEDIA_MIX_DOMAIN = "CallChat-ZMath-MatrixRTC-Media-Mix-v1";
+const encoder = new TextEncoder();
+
+function joinBytes(
+  ...parts: Uint8Array<ArrayBuffer>[]
+): Uint8Array<ArrayBuffer> {
+  const output = new Uint8Array(
+    parts.reduce((length, part) => length + part.length, 0),
+  );
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.length;
+  }
+  return output;
+}
+
+/**
+ * Domain-separates a ZMath room factor and a rotating MatrixRTC sender key.
+ * Both inputs are required to reproduce the LiveKit frame key material.
+ */
+export async function deriveZMathMediaKeyBytes(
+  encryptionKey: Uint8Array<ArrayBuffer>,
+  zmathMediaKey: string,
+  rtcBackendIdentity: string,
+  encryptionKeyIndex: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+  if (!zmathMediaKey.startsWith("ZMATHCALL1.")) {
+    throw new Error("Unsupported ZMath media key profile");
+  }
+
+  const secret = encoder.encode(zmathMediaKey);
+  const separator = new Uint8Array([0]);
+  const ikmBytes = joinBytes(encryptionKey, separator, secret);
+  const ikm = await crypto.subtle.importKey("raw", ikmBytes, "HKDF", false, [
+    "deriveBits",
+  ]);
+  const salt = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      encoder.encode(ZMATH_MEDIA_MIX_DOMAIN),
+    ),
+  );
+  const info = encoder.encode(
+    `${ZMATH_MEDIA_MIX_DOMAIN}:${rtcBackendIdentity}:${encryptionKeyIndex}`,
+  );
+  const mixed = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: "HKDF", hash: "SHA-256", salt, info },
+      ikm,
+      256,
+    ),
+  );
+  secret.fill(0);
+  ikmBytes.fill(0);
+  salt.fill(0);
+  return mixed;
+}
 
 export class MatrixKeyProvider extends BaseKeyProvider {
   private rtcSession?: MatrixRTCSession;
 
-  public constructor() {
+  public constructor(private readonly zmathMediaKey?: string) {
     super({ ratchetWindowSize: 10, keyringSize: 256 });
   }
 
@@ -47,11 +105,26 @@ export class MatrixKeyProvider extends BaseKeyProvider {
     membershipParts: CallMembershipIdentityParts,
     rtcBackendIdentity: string,
   ): void => {
-    crypto.subtle
-      .importKey("raw", encryptionKey, "HKDF", false, [
-        "deriveBits",
-        "deriveKey",
-      ])
+    const keyBytesPromise = this.zmathMediaKey
+      ? deriveZMathMediaKeyBytes(
+          encryptionKey,
+          this.zmathMediaKey,
+          rtcBackendIdentity,
+          encryptionKeyIndex,
+        )
+      : Promise.resolve(encryptionKey);
+
+    keyBytesPromise
+      .then(async (keyBytes) => {
+        try {
+          return await crypto.subtle.importKey("raw", keyBytes, "HKDF", false, [
+            "deriveBits",
+            "deriveKey",
+          ]);
+        } finally {
+          if (this.zmathMediaKey) keyBytes.fill(0);
+        }
+      })
       .then(
         (keyMaterial) => {
           this.onSetEncryptionKey(

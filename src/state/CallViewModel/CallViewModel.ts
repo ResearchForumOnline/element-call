@@ -1776,7 +1776,7 @@ function getE2eeKeyProvider(
   if (e2eeSystem.kind === E2eeType.NONE) return undefined;
 
   if (e2eeSystem.kind === E2eeType.PER_PARTICIPANT) {
-    const keyProvider = new MatrixKeyProvider();
+    const keyProvider = new MatrixKeyProvider(e2eeSystem.zmathMediaKey);
     keyProvider.setRTCSession(rtcSession);
     return keyProvider;
   } else if (e2eeSystem.kind === E2eeType.SHARED_KEY && e2eeSystem.secret) {

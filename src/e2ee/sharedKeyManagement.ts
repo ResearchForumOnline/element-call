@@ -72,11 +72,38 @@ export function getKeyForRoom(roomId: string): string | null {
 
 export type Unencrypted = { kind: E2eeType.NONE };
 export type SharedSecret = { kind: E2eeType.SHARED_KEY; secret: string };
-export type PerParticipantE2EE = { kind: E2eeType.PER_PARTICIPANT };
+export type PerParticipantE2EE = {
+  kind: E2eeType.PER_PARTICIPANT;
+  zmathMediaKey?: string;
+};
 export type EncryptionSystem = Unencrypted | SharedSecret | PerParticipantE2EE;
+
+interface CallChatZMathHost extends Window {
+  callchatZMathAuto?: {
+    requireCallSecret(roomId: string): string;
+  };
+}
+
+function getZMathMediaKeyFromHost(roomId: string): string {
+  try {
+    const host = window.parent as CallChatZMathHost;
+    const secret = host.callchatZMathAuto?.requireCallSecret(roomId);
+    if (!secret) throw new Error("CallChat ZMath media bridge is unavailable");
+    return secret;
+  } catch (error) {
+    throw new Error("Unable to obtain the required in-memory ZMath media key", {
+      cause: error,
+    });
+  }
+}
 
 export function useRoomEncryptionSystem(roomId: string): EncryptionSystem {
   const { client } = useClient();
+  const { zmathMediaE2EE } = getUrlParams();
+  const zmathMediaKey = useMemo(
+    () => (zmathMediaE2EE ? getZMathMediaKeyFromHost(roomId) : undefined),
+    [roomId, zmathMediaE2EE],
+  );
 
   const [storedPassword] = useRoomSharedKey(
     getRoomSharedKeyLocalStorageKey(roomId),
@@ -92,9 +119,12 @@ export function useRoomEncryptionSystem(roomId: string): EncryptionSystem {
         secret: storedPassword,
       };
     if (room.hasEncryptionStateEvent()) {
-      return { kind: E2eeType.PER_PARTICIPANT };
+      return {
+        kind: E2eeType.PER_PARTICIPANT,
+        zmathMediaKey: zmathMediaKey ?? undefined,
+      };
     }
     return { kind: E2eeType.NONE };
-  }, [room, storedPassword]);
+  }, [room, storedPassword, zmathMediaKey]);
   return e2eeSystem;
 }
