@@ -110,6 +110,8 @@ export interface UrlProperties {
    * E2EE password
    */
   password: string | null;
+  /** Whether the same-origin CallChat host requires its in-memory ZMath media factor. */
+  zmathMediaE2EE: boolean;
   /** This defines the homeserver that is going to be used when joining a room.
    * It has to be set to a non default value for links to rooms
    * that are not on the default homeserver,
@@ -443,6 +445,7 @@ export const computeUrlParams = (search = "", hash = ""): UrlParams => {
     // the room ID is, then that's what it is.
     roomId: parser.getParam("roomId"),
     password: parser.getParam("password"),
+    zmathMediaE2EE: parser.getFlagParam("zmathMediaE2EE", false),
     userId: isWidget ? parser.getParam("userId") : null,
     displayName: parser.getParam("displayName"),
     deviceId: isWidget ? parser.getParam("deviceId") : null,
@@ -489,12 +492,16 @@ export const computeUrlParams = (search = "", hash = ""): UrlParams => {
 
   // Log the final configuration for debugging purposes.
   // This will only log when the cache is not yet set.
+  const logProperties = {
+    ...properties,
+    password: properties.password ? "[redacted]" : null,
+  };
   logger.info(
     "UrlParams: final set of url params\n",
     "intent:",
     intent,
     "\nproperties:",
-    properties,
+    logProperties,
     "configuration:",
     configuration,
   );

@@ -12,7 +12,10 @@ import {
 } from "matrix-js-sdk/lib/matrixrtc";
 import { KeyProviderEvent } from "livekit-client";
 
-import { MatrixKeyProvider } from "./matrixKeyProvider";
+import {
+  deriveZMathMediaKeyBytes,
+  MatrixKeyProvider,
+} from "./matrixKeyProvider";
 
 function mockRTCSession(): MatrixRTCSession {
   return {
@@ -68,5 +71,73 @@ describe("matrixKeyProvider", () => {
     keyProvider.setRTCSession(session);
 
     expect(session.reemitEncryptionKeys).toHaveBeenCalled();
+  });
+
+  test("mixes both ZMath and rotating MatrixRTC factors deterministically", async () => {
+    const matrixKey = new Uint8Array(32).fill(7);
+    const first = await deriveZMathMediaKeyBytes(
+      matrixKey,
+      "ZMATHCALL1.correct-room-factor",
+      "participant-a",
+      4,
+    );
+    const second = await deriveZMathMediaKeyBytes(
+      matrixKey,
+      "ZMATHCALL1.correct-room-factor",
+      "participant-a",
+      4,
+    );
+    const wrongPattern = await deriveZMathMediaKeyBytes(
+      matrixKey,
+      "ZMATHCALL1.wrong-room-factor",
+      "participant-a",
+      4,
+    );
+    const rotatedMatrixKey = await deriveZMathMediaKeyBytes(
+      new Uint8Array(32).fill(8),
+      "ZMATHCALL1.correct-room-factor",
+      "participant-a",
+      4,
+    );
+
+    expect(first).toEqual(second);
+    expect(first).not.toEqual(wrongPattern);
+    expect(first).not.toEqual(rotatedMatrixKey);
+  });
+
+  test("separates participant identities and key indexes", async () => {
+    const matrixKey = new Uint8Array(32).fill(11);
+    const base = await deriveZMathMediaKeyBytes(
+      matrixKey,
+      "ZMATHCALL1.room-factor",
+      "participant-a",
+      2,
+    );
+    const otherParticipant = await deriveZMathMediaKeyBytes(
+      matrixKey,
+      "ZMATHCALL1.room-factor",
+      "participant-b",
+      2,
+    );
+    const otherIndex = await deriveZMathMediaKeyBytes(
+      matrixKey,
+      "ZMATHCALL1.room-factor",
+      "participant-a",
+      3,
+    );
+
+    expect(base).not.toEqual(otherParticipant);
+    expect(base).not.toEqual(otherIndex);
+  });
+
+  test("rejects unknown ZMath media profiles", async () => {
+    await expect(
+      deriveZMathMediaKeyBytes(
+        new Uint8Array(32),
+        "not-zmath",
+        "participant-a",
+        0,
+      ),
+    ).rejects.toThrow("Unsupported ZMath media key profile");
   });
 });
