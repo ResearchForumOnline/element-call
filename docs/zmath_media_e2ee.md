@@ -5,22 +5,16 @@ audio, video, and screen-sharing frames. This profile extends Element Call's
 existing MatrixRTC per-participant encryption; it does not replace MatrixRTC,
 WebRTC, or LiveKit.
 
-## Key path
+## Protection model
 
-1. The CallChat parent client derives a session root from the passphrase and
-   SHA-256 hash of the exact pattern image using PBKDF2-SHA-256 (600,000
-   iterations) and HKDF-SHA-256.
-2. It derives a separate 256-bit factor for each Matrix room with
-   HKDF-SHA-256.
-3. Element Call combines that room factor with every rotating MatrixRTC sender
-   key using HKDF-SHA-256. The participant identity and MatrixRTC key index are
-   included as derivation context.
-4. The resulting non-extractable key material is passed to LiveKit's frame
-   E2EE worker for audio, video, and screen sharing.
+The CallChat parent prepares a room-scoped factor from the passphrase and exact
+pattern. Element Call combines that factor with the rotating MatrixRTC media
+key path before LiveKit's frame E2EE worker encrypts audio, video, and screen
+sharing.
 
-Both the normal MatrixRTC key and the ZMath factor are required to reproduce a
-frame key. A different passphrase, pattern image, room, participant, rotating
-MatrixRTC key, or key index produces different key material.
+Both the normal MatrixRTC media context and the ZMath factor are required. The
+public documentation describes this security boundary without publishing
+private ZMath policy or deployment material.
 
 ## Secret handling
 
