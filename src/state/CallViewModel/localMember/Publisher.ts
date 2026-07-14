@@ -187,14 +187,29 @@ export class Publisher {
     // We are using the `ParticipantEvent.LocalTrackPublished` to be notified
     // when tracks are actually published, and at that point
     // we can pause upstream if needed (depending on if startPublishing has been called).
-    if (audio && video) {
-      // Enable both at once in order to have a single permission prompt!
-      void lkRoom.localParticipant.enableCameraAndMicrophone();
-    } else if (audio) {
-      void lkRoom.localParticipant.setMicrophoneEnabled(true);
-    } else if (video) {
-      void lkRoom.localParticipant.setCameraEnabled(true);
-    }
+    // Acquire each device independently. Combining both requests makes iPadOS
+    // Safari present one all-or-nothing prompt, so declining camera access can
+    // also prevent a voice call. The camera normally remains disabled until
+    // the user taps Start video; this sequential fallback also protects callers
+    // that enter with both mute states already enabled.
+    this.logger.debug("CallChat-Independent-Media-Permissions-v1");
+    void (async (): Promise<void> => {
+      if (audio) {
+        try {
+          await lkRoom.localParticipant.setMicrophoneEnabled(true);
+        } catch (e) {
+          this.logger.error("Failed to enable microphone while joining", e);
+        }
+      }
+
+      if (video) {
+        try {
+          await lkRoom.localParticipant.setCameraEnabled(true);
+        } catch (e) {
+          this.logger.error("Failed to enable camera while joining", e);
+        }
+      }
+    })();
 
     return Promise.resolve();
   }

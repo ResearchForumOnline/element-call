@@ -244,11 +244,16 @@ describe("Publisher", () => {
     expect(scopeEndSpy).toHaveBeenCalled();
   });
 
-  it("Should minimize permission request by querying create at once", async () => {
+  it("requests microphone and camera independently", async () => {
     const enableCameraAndMicrophoneSpy = vi.spyOn(
       localParticipant,
       "enableCameraAndMicrophone",
     );
+    const setMicrophoneEnabledSpy = vi.spyOn(
+      localParticipant,
+      "setMicrophoneEnabled",
+    );
+    const setCameraEnabledSpy = vi.spyOn(localParticipant, "setCameraEnabled");
     const createTracksSpy = vi.spyOn(localParticipant, "createTracks");
 
     audioEnabled$.next(true);
@@ -256,11 +261,15 @@ describe("Publisher", () => {
     await publisher.createAndSetupTracks();
     await flushPromises();
 
-    expect(enableCameraAndMicrophoneSpy).toHaveBeenCalled();
-
-    // It should create both at once
+    expect(enableCameraAndMicrophoneSpy).not.toHaveBeenCalled();
+    expect(setMicrophoneEnabledSpy).toHaveBeenCalledWith(true);
+    expect(setCameraEnabledSpy).toHaveBeenCalledWith(true);
     expect(createTracksSpy).toHaveBeenCalledWith({
       audio: true,
+      video: undefined,
+    });
+    expect(createTracksSpy).toHaveBeenCalledWith({
+      audio: undefined,
       video: true,
     });
   });

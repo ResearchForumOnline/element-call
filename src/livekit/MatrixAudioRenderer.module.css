@@ -1,0 +1,51 @@
+.audioElements {
+  display: none;
+}
+
+.playbackGate {
+  position: fixed;
+  z-index: 80;
+  top: 16px;
+  left: 50%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: min(620px, calc(100% - 32px));
+  padding: 12px;
+  color: var(--cpd-color-text-primary);
+  background: var(--cpd-color-bg-canvas-default);
+  border: 1px solid var(--cpd-color-border-interactive-primary);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 35%);
+  transform: translateX(-50%);
+}
+
+.playbackCopy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.playbackCopy strong,
+.playbackCopy span {
+  overflow-wrap: anywhere;
+}
+
+.playbackCopy span {
+  color: var(--cpd-color-text-secondary);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 560px) {
+  .playbackGate {
+    top: 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+    width: calc(100% - 16px);
+  }
+
+  .playbackGate button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}

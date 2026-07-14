@@ -85,7 +85,7 @@ export class Config {
 }
 
 async function downloadConfig(fetchTarget: string): Promise<ConfigOptions> {
-  const response = await fetch(fetchTarget);
+  const response = await fetch(fetchTarget, { cache: "no-store" });
 
   if (isFailure(response)) {
     // Lack of a config isn't an error, we should just use the defaults.

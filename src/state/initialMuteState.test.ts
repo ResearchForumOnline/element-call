@@ -29,7 +29,7 @@ test.each<{
       isWidgetMode,
     );
     expect(audioEnabled).toBe(true);
-    expect(videoEnabled).toBe(callIntent !== "audio");
+    expect(videoEnabled).toBe(false);
   },
 );
 
@@ -59,7 +59,7 @@ test.each<{
   { callIntent: "video" },
   { callIntent: "unknown" },
 ])(
-  "Can start unmuted if skipping lobby on widget mode (callIntent: $callIntent)",
+  "Starts with microphone only when skipping the lobby in widget mode (callIntent: $callIntent)",
   ({ callIntent }) => {
     const { audioEnabled, videoEnabled } = calculateInitialMuteState(
       true,
@@ -67,6 +67,6 @@ test.each<{
       true,
     );
     expect(audioEnabled).toBe(true);
-    expect(videoEnabled).toBe(callIntent !== "audio");
+    expect(videoEnabled).toBe(false);
   },
 );
