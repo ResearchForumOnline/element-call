@@ -6,19 +6,28 @@ Please see LICENSE in the repository root for full details.
 */
 
 import { getTrackReferenceId } from "@livekit/components-core";
-import { type Room as LivekitRoom } from "livekit-client";
+import { RoomEvent, type Room as LivekitRoom } from "livekit-client";
 import { type RemoteAudioTrack, Track } from "livekit-client";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   useTracks,
   AudioTrack,
   type AudioTrackProps,
 } from "@livekit/components-react";
 import { logger } from "matrix-js-sdk/lib/logger";
+import { Button } from "@vector-im/compound-web";
+import { VolumeOnSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { useEarpieceAudioConfig } from "../MediaDevicesContext";
 import { useReactiveState } from "../useReactiveState";
 import * as controls from "../controls";
+import styles from "./MatrixAudioRenderer.module.css";
 
 export interface MatrixAudioRendererProps {
   /**
@@ -137,17 +146,86 @@ export function LivekitRoomAudioRenderer({
   }, [audioNodes.gain, volumeFactor]);
 
   return (
-    // We add all audio elements into one <div> for the browser developer tool experience/tidyness.
-    <div style={{ display: "none" }}>
-      {tracks.map((trackRef) => (
-        <AudioTrackWithAudioNodes
-          key={getTrackReferenceId(trackRef)}
-          trackRef={trackRef}
-          muted={muted}
-          audioContext={shouldUseAudioContext ? audioContext : undefined}
-          audioNodes={audioNodes}
-        />
-      ))}
+    <>
+      <AudioPlaybackGate livekitRoom={livekitRoom} />
+      {/* Keep media elements out of the visual layout while allowing playback. */}
+      <div className={styles.audioElements}>
+        {tracks.map((trackRef) => (
+          <AudioTrackWithAudioNodes
+            key={getTrackReferenceId(trackRef)}
+            trackRef={trackRef}
+            muted={muted}
+            audioContext={shouldUseAudioContext ? audioContext : undefined}
+            audioNodes={audioNodes}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
+interface AudioPlaybackGateProps {
+  livekitRoom: LivekitRoom;
+}
+
+/**
+ * Safari and other browsers can accept remote tracks while blocking audible
+ * playback. Keep that state visible and resume it from an explicit user action.
+ */
+function AudioPlaybackGate({ livekitRoom }: AudioPlaybackGateProps): ReactNode {
+  const [canPlay, setCanPlay] = useState(livekitRoom.canPlaybackAudio);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const onStatusChanged = (): void => {
+      setCanPlay(livekitRoom.canPlaybackAudio);
+      if (livekitRoom.canPlaybackAudio) setFailed(false);
+    };
+    livekitRoom.on(RoomEvent.AudioPlaybackStatusChanged, onStatusChanged);
+    onStatusChanged();
+    return (): void => {
+      livekitRoom.off(RoomEvent.AudioPlaybackStatusChanged, onStatusChanged);
+    };
+  }, [livekitRoom]);
+
+  const startAudio = useCallback(async (): Promise<void> => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      await livekitRoom.startAudio();
+      setCanPlay(livekitRoom.canPlaybackAudio);
+      controls.setPlaybackStarted();
+    } catch (error) {
+      prefixedLogger.warn("Browser refused to start call audio", error);
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }, [livekitRoom]);
+
+  if (canPlay) return null;
+
+  return (
+    <div className={styles.playbackGate} role="status" aria-live="polite">
+      <VolumeOnSolidIcon aria-hidden width={22} height={22} />
+      <div className={styles.playbackCopy}>
+        <strong>Call audio is paused</strong>
+        <span>
+          {failed
+            ? "Your browser still blocked sound. Check site audio permission, then try again."
+            : "Your browser needs one tap before it can play the other person."}
+        </span>
+      </div>
+      <Button
+        kind="primary"
+        size="md"
+        disabled={busy}
+        aria-busy={busy}
+        onClick={() => void startAudio()}
+      >
+        {busy ? "Starting..." : "Enable sound"}
+      </Button>
     </div>
   );
 }

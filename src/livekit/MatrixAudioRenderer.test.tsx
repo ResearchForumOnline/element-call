@@ -6,7 +6,8 @@ Please see LICENSE in the repository root for full details.
 */
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { render, type RenderResult } from "@testing-library/react";
+import { render, screen, type RenderResult } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   getTrackReferenceId,
   type TrackReference,
@@ -15,6 +16,7 @@ import {
   type Participant,
   type RemoteAudioTrack,
   type Room,
+  RoomEvent,
   Track,
 } from "livekit-client";
 import { type ReactNode } from "react";
@@ -64,6 +66,7 @@ vi.mock("@livekit/components-react", async (importOriginal) => {
 });
 
 let tracks: TrackReference[] = [];
+let liveKitRoom: Room;
 
 /**
  * Render the test component with given rtc members and livekit participant identities.
@@ -93,10 +96,14 @@ function renderTestComponent(
     );
     return p === undefined ? [] : [p];
   });
-  const livekitRoom = {
+  liveKitRoom = {
     remoteParticipants: new Map<string, Participant>(
       liveKitParticipants.map((p) => [p.identity, p]),
     ),
+    canPlaybackAudio: true,
+    on: vi.fn(),
+    off: vi.fn(),
+    startAudio: vi.fn().mockResolvedValue(undefined),
   } as unknown as Room;
 
   if (explicitTracks?.length ?? 0 > 0) {
@@ -115,7 +122,7 @@ function renderTestComponent(
     <MediaDevicesProvider value={mockMediaDevices({})}>
       <LivekitRoomAudioRenderer
         validIdentities={participants.map((p) => p.identity)}
-        livekitRoom={livekitRoom}
+        livekitRoom={liveKitRoom}
         url={""}
       />
     </MediaDevicesProvider>,
@@ -129,6 +136,47 @@ it("should render for member", () => {
   );
   expect(container).toBeTruthy();
   expect(queryAllByTestId("audio")).toHaveLength(1);
+});
+
+it("offers a one-click recovery when browser audio playback is blocked", async () => {
+  const user = userEvent.setup();
+  const { rerender } = renderTestComponent(
+    [{ userId: "@alice", deviceId: "DEV0" }],
+    ["@alice:DEV0"],
+  );
+  const listeners = vi.mocked(liveKitRoom.on).mock.calls;
+  const statusListener = listeners.find(
+    ([event]) => event === RoomEvent.AudioPlaybackStatusChanged,
+  )?.[1] as (() => void) | undefined;
+
+  Object.defineProperty(liveKitRoom, "canPlaybackAudio", {
+    configurable: true,
+    value: false,
+  });
+  statusListener?.();
+  rerender(
+    <MediaDevicesProvider value={mockMediaDevices({})}>
+      <LivekitRoomAudioRenderer
+        validIdentities={["@alice:DEV0"]}
+        livekitRoom={liveKitRoom}
+        url={""}
+      />
+    </MediaDevicesProvider>,
+  );
+
+  const enableSound = await screen.findByRole("button", {
+    name: "Enable sound",
+  });
+  Object.defineProperty(liveKitRoom, "canPlaybackAudio", {
+    configurable: true,
+    value: true,
+  });
+  await user.click(enableSound);
+
+  expect(liveKitRoom.startAudio).toHaveBeenCalledTimes(1);
+  expect(
+    screen.queryByRole("button", { name: "Enable sound" }),
+  ).not.toBeInTheDocument();
 });
 
 it("should not render without member", () => {
