@@ -32,11 +32,13 @@ export function calculateInitialMuteState(
     };
   }
 
-  // Embedded contexts are trusted environments, so they allow unmuted by default.
-  // Same for when showing a lobby, as users can adjust their settings there.
-  // Additionally, if the call intent is "audio", we disable video by default.
+  // Start with the microphone ready, but keep the camera off until the user
+  // explicitly enables it. This gives browsers one permission request per
+  // device and prevents a declined camera request from blocking voice calls.
+  // It is particularly important for embedded calls on iPadOS Safari, which
+  // otherwise combines microphone and camera into a single system prompt.
   return {
     audioEnabled: true,
-    videoEnabled: callIntent != "audio",
+    videoEnabled: false,
   };
 }

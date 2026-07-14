@@ -129,9 +129,10 @@ export const LobbyView: FC<Props> = ({
     devices.videoInput.selected$,
   )?.id;
 
-  // Capture the audio options as they were when we first mounted, because
-  // we're not doing anything with the audio anyway so we don't need to
-  // re-open the devices when they change (see below).
+  // Request microphone access independently when the lobby opens. Camera
+  // access is deferred until the user explicitly enables the video preview.
+  // Capture the audio options as they were when we first mounted so changing
+  // audio settings does not repeatedly open the device.
   const initialAudioOptions = useInitial(
     () =>
       audioEnabled && {
@@ -144,9 +145,8 @@ export const LobbyView: FC<Props> = ({
   const initialProcessor = useInitial(() => processor);
   const localTrackOptions = useMemo<CreateLocalTracksOptions>(
     () => ({
-      // The only reason we request audio here is to get the audio permission
-      // request over with at the same time. But changing the audio settings
-      // shouldn't cause this hook to recreate the track, which is why we
+      // Microphone and camera start as separate user choices. Changing the
+      // audio settings should not recreate the preview track, which is why we
       // reference the initial values here.
       // We also pass in a clone because livekit mutates the object passed in,
       // which would cause the devices to be re-opened on the next render.
